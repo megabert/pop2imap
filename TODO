@@ -1,0 +1,6 @@
+
+
+Replace date transormations by imapsync one.
+Throw away Date::Manip this way.
+
+

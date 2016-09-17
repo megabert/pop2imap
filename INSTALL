@@ -1,0 +1,61 @@
+# $Id: INSTALL,v 1.4 2008/09/01 01:29:47 gilles Exp gilles $
+# 
+# INSTALL file for pop2imap
+
+GETTING
+-------
+
+http://www.linux-france.org/prj/pop2imap/dist/
+
+PREREQUISITES
+-------------
+
+You need : 
+- Perl 
+  try : perl -v
+  try : perl -c pop2imap
+
+- Mail::IMAPClient module 
+  try : perl -mMail::IMAPClient -e ''
+
+- Mail::POP3Client module 
+  try : perl -mMail::POP3Client -e ''
+
+- Email::Simple module
+  try : perl -mEmail::Simple -e ''
+
+- Date::Manip module 
+  try : perl -mDate::Manip -e ''
+
+- IO::Socket::SSL  module (optional needed with --ssl1 or --ssl2)
+  try : perl -mIO::Socket::SSL -e ''
+
+Any software packager should add all the perl modules dependencies by default
+since users can use any option (--ssl*).
+
+
+INSTALLING
+----------
+To see what will be done, just run:
+
+  make -n install
+
+To install pop2imap, just run:
+
+  make install
+
+or copy the file pop2imap where you want it to be.
+
+TESTING
+-------
+
+You can change the file tests.sh and run the tests with :
+
+  sh -x tests.sh
+
+The tests.sh script break on first failure ("set -e" directive).
+
+Since I added more tests you also need a remote imap server see the
+file tests.sh and help yourself. No time to make a universal test
+file.
+

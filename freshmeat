@@ -1,0 +1,20 @@
+
+$Id: freshmeat,v 1.2 2003/08/19 02:53:59 gilles Exp $
+
+http://freshmeat.net/projects/pop2imap
+
+synchronize mailboxes between a pop and an imap servers.
+
+pop2imap is a tool for facilitating incremental
+POP to IMAP transfers from one mailbox to
+another. It is useful for mailbox migration, and
+reduces the amount of data transferred by only
+copying messages that are not present on both
+servers.  The process can be stopped and
+resumed. The original messages can optionally be
+deleted after a successful transfer.
+
+http://www.linux-france.org/prj/pop2imap/
+http://www.linux-france.org/prj/pop2imap/dist/
+http://www.linux-france.org/prj/pop2imap/ChangeLog
+

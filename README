@@ -1,0 +1,72 @@
+NAME
+    pop2imap - POP to IMAP sync or copy tool. Synchronize mailboxes between
+    a pop and an imap servers.
+
+    $Revision: 1.27 $
+
+INSTALL
+     Get pop2imap at http://www.linux-france.org/prj/pop2imap/dist/
+     tar xzvf  pop2imap-x.xx.tgz  # x.xx is the version number
+     Read the INSTALL file.
+     freshmeat record: http://freshmeat.net/projects/pop2imap/
+
+SYNOPSIS
+     pop2imap [options]
+
+     pop2imap --help
+     pop2imap
+
+     pop2imap [--host1 server1]  [--port1 <num>]
+              [--user1 <string>] [--passfile1 <string>]
+              [--host2 server2]  [--port2 <num>] [--ssl2|--starttls2]
+              [--user2 <string>] [--passfile2 <string>]
+              [--from <string>]  [--to <string>]
+              [--justlogin]
+              [--timeout2 <int>]
+              [--folder <string>]
+              [--delete]
+              [--dry]
+              [--quiet]
+              [--debug] [--debugimap] [--debugpop] 
+              [--version] [--help]
+
+DESCRIPTION
+    The command pop2imap is a tool allowing incremental transfer from one
+    POP3 mailbox to an IMAP one.
+
+    We sometimes need to transfer mailboxes from one POP3 server an IMAP
+    server. This is called migration.
+
+    pop2imap is the adequate tool because it reduces the amount of data
+    transfered by not transferring a given message if it is already on both
+    sides. You can stop the transfer at any time and restart it later,
+    pop2imap is adapted to a bad connection.
+
+    You can decide to delete the messages from the source mailbox after a
+    successful transfer (it is a good feature when migrating). In that case,
+    use the --delete option.
+
+    You can also just synchronize a mailbox A from another mailbox B in case
+    you just want to keep a "live" copy of B in A.
+
+OPTIONS
+    Invoke: pop2imap --help
+
+AUTHOR
+    Gilles LAMIRAL gilles.lamiral@laposte.net
+
+LICENSE
+    pop2imap is free, gratis, open, public software cover by the NOLIMIT
+    licence. "No limit to do anything with this work and this license."
+
+BUGS
+    No known bug. Report any bugs to the author: gilles.lamiral@laposte.net
+
+SIMILAR SOFTWARES
+    None known. Feedback will be welcome.
+
+    I saw this proxy same name software : http://soderberg.net/pop2imap/
+    (2008 : disappeared)
+
+    $Id: pop2imap,v 1.27 2015/11/03 23:34:02 gilles Exp gilles $
+

@@ -1,0 +1,19 @@
+#!/bin/cat
+
+$Id: CREDITS,v 1.8 2015/11/03 23:35:54 gilles Exp gilles $
+
+Peter Benko. (2015_11_03)
+timeout2 missing from GetOptions()
+
+Miguel TELLERIA DE ESTEBAN (2015_10_15)
+Gave idea/patch for option --justlogin
+
+Phil Carmody <phil.carmody@partner.samsung.com>
+Gave the patch from 1.18 to 1.19
+See misc/pop2imap.carmody
+
+Jean-Marc BOUCHER
+Made me write the option --idatefromheader
+
+Jean Honlet. 
+Jean sent a patch adding --ssl1 --ssl2 and --quiet

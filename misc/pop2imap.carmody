@@ -1,0 +1,466 @@
+#!/usr/bin/perl -w
+
+=head1 NAME 
+
+pop2imap - POP to IMAP sync or copy tool. Synchronize mailboxes between a pop and an imap servers.
+
+$Revision: 1.18+pc $
+
+=cut
+# comment
+=pod
+
+=head1 INSTALL
+
+ Get pop2imap at http://www.linux-france.org/prj/pop2imap/dist/
+ tar xzvf  pop2imap-x.xx.tgz  # x.xx is the version number
+ Read the INSTALL file.
+ freshmeat record: http://freshmeat.net/projects/pop2imap/
+
+
+
+=head1 SYNOPSIS
+
+ pop2imap [options]
+
+ pop2imap --help
+ pop2imap
+
+ pop2imap [--host1 server1]  [--port1 <num>]
+          [--user1 <string>] [--passfile1 <string>]
+          [--host2 server2]  [--port2 <num>] [--ssl2|--starttls2]
+          [--user2 <string>] [--passfile2 <string>]
+          [--from <string>]  [--to <string>]
+          [--folder <string>]
+          [--delete]
+          [--dry]
+          [--quiet]
+          [--debug] [--debugimap] [--debugpop] 
+          [--version] [--help]
+
+
+=head1 DESCRIPTION
+
+The command pop2imap is a tool allowing incremental transfer from one
+POP3 mailbox to an IMAP one.
+
+We sometimes need to transfer mailboxes from one POP3 server an IMAP
+server. This is called migration.
+
+pop2imap is the adequate tool because it reduces the amount of data
+transfered by not transfering a given message if it is already on both
+sides. You can stop the transfer at any time and restart it later,
+pop2imap is adapted to a bad connection.
+
+You can decide to delete the messages from the source mailbox
+after a successful transfer (it is a good feature when migrating).
+In that case, use the --delete option.
+
+You can also just synchronize a mailbox A from another mailbox B
+in case you just want to keep a "live" copy of B in A.
+
+=head1 OPTIONS
+
+Invoke: pop2imap --help
+
+=head1 AUTHOR
+
+Gilles LAMIRAL lamiral@linux-france.org
+
+=head1 LICENSE
+
+pop2imap is free, gratis and open source software cover by the GNU
+General Public License. See the GPL file included in the distribution
+or the web site http://www.gnu.org/licenses/licenses.html
+
+=head1 BUGS
+
+No known bug.
+Report any bugs to the author: lamiral@linux-france.org
+
+
+=head1 SIMILAR SOFTWARES
+
+None known.
+Feedback will be welcome.
+
+I saw this proxy same name software :
+http://soderberg.net/pop2imap/ 
+(2008 : disapeared)
+
+Branched by Phil Carmody <phil.carmody@partner.samsung.com> from:
+$Id: pop2imap,v 1.18 2008/09/01 01:28:23 gilles Exp gilles $
+
+=cut
+
+use Mail::POP3Client;
+use Mail::IMAPClient;
+use Getopt::Long;
+use Email::Simple;
+use Date::Manip;
+
+use strict;
+
+my($rcs, $VERSION, $error, $debug, $version, $help,
+$from, $to,
+$user1, $ssl1, $password1, $host1, $passfile1,
+$user2, $ssl2, $starttls2, $password2, $host2, $passfile2,
+$pop, $imap, $debugpop, $debugimap, $folder, $folder2, 
+$port1, $port2,
+$delete, $dry, $expunge,
+$quiet,
+$idatefromheader,
+);
+
+$rcs = ' $Id: pop2imap,v 1.18 2008/09/01 01:28:23 gilles Exp gilles $ ';
+$rcs =~ m/,v (\d+\.\d+)/;
+$VERSION = ($1) ? "$1+pc" : "UNKNOWN";
+$error=0;
+
+get_options();
+
+!($ssl2 && $starttls2) || incompatible("--ssl2", "--starttls2");
+
+if ($debug) { $quiet = 0 };
+
+if ($from) {
+	defined($user1) and incompatible("--user1", "--from");
+	defined($host1) and incompatible("--host1", "--from");
+	defined($port1) and incompatible("--port1", "--from");
+	($from !~ m/^([^@\s]+)\@([^:\s]+)(?::(\d+))?$/)
+	    and missing_option("Well-formed --from");
+	($user1, $host1, $port1) = ($1, $2, $3);
+}
+$host1 || missing_option("--host1") ;
+$port1 = (defined($port1)) ? $port1 : ($ssl1 ? 995 : 110);
+$user1 || missing_option("--user1");
+$password1 || $passfile1 || missing_option("--passfile1 or --password1");
+$password1 = (defined($passfile1)) ? firstline ($passfile1) : $password1;
+
+if ($to) {
+	defined($user2) and incompatible("--user2", "--to");
+	defined($host2) and incompatible("--host2", "--to");
+	defined($port2) and incompatible("--port2", "--to");
+	if ($to =~ s,^((?:[^\s]+)\@(?:[^/\@:\s]+)(?::(?:\d+))?)/(\w+)$,$1,) {
+		defined($folder) and incompatible("--folder", "--to");
+		$folder = $2;
+	}
+	($to !~ m/^([^\s]+)\@([^\@:\s]+)(?::(\d+))?$/)
+	    and missing_option("Well-formed --to");
+	($user2, $host2, $port2) = ($1, $2, $3);
+}
+$host2 || missing_option("--host2") ;
+$port2 = (defined($port2)) ? $port2 : ($ssl2 ? 993 : 143);
+$user2 || missing_option("--user2");
+$password2 || $passfile2 || missing_option("--passfile2 or --password2");
+$password2 = (defined($passfile2)) ? firstline ($passfile2) : $password2;
+
+$folder2 = (defined($folder)) ? $folder : "INBOX";
+
+# Imap internal date from pop date header is turned ON by default.
+$idatefromheader = (defined($idatefromheader)) ? $idatefromheader : 1;
+
+$quiet || print "From pop3 server [$host1] ", ($ssl1 ? "[ssl] " : ""), "port [$port1] user [$user1]\n";
+$quiet || print "To   imap server [$host2] ", ($ssl2 ? "[ssl] " : ""), "port [$port2] user [$user2]\n";
+
+
+
+if ($idatefromheader) {
+	no warnings 'redefine';
+	local *Carp::confess = sub { return undef; };
+	#require Date::Manip;
+	Date::Manip->import(qw(ParseDate Date_Cmp UnixDate Date_Init Date_TimeZone));
+	#print "Date_init : [", join(" ",Date_Init()), "]\n";
+	$quiet || print "TimeZone :[", Date_TimeZone(), "]\n";
+	if (not (Date_TimeZone())) {
+		warn "TimeZone not defined, setting it to GMT";
+		Date_Init("TZ=GMT");
+		$quiet || print "TimeZone : [", Date_TimeZone(), "]\n";
+	}
+}
+
+
+sub missing_option {
+        my ($option) = @_;
+        die "$option option must be used, run $0 --help for help\n";
+}
+sub incompatible {
+	my ($opt1, $opt2) = @_;
+	die "$opt1 and $opt2 are incompatible, run $0 --help for help\n";
+}
+
+$pop = new Mail::POP3Client( 
+			    DEBUG    => $debugpop,
+			    HOST     => $host1,
+			    PORT     => $port1,
+                            USESSL   => $ssl1,
+);
+
+$pop->User($user1);
+$pop->Pass($password1);
+($pop->Connect() >= 0 and $pop->Alive()) || die $pop->Message();
+
+my %popmess;
+if (getpopheaders($pop) <= 0) {
+	$quiet || print "Bailing: no work to do\n";
+	exit;
+}
+
+imap_connect();
+
+sub imap_connect {
+	my %common = (
+		Server   => $host2,
+		Port     => $port2,
+		User     => $user2,
+		Password => $password2,
+		Peek	 => 1,
+		Uid	 => 1,
+		Debug    => $debugimap,
+	);
+	if(!$starttls2) {
+		$common{'Ssl'} = $ssl2;
+	} else {
+		$common{'Starttls'} = $starttls2;
+	}
+	$imap = Mail::IMAPClient->new(%common) || die "";
+	$quiet || print("startls negotiated with IMAP server\n");
+}
+
+
+$imap->select($folder2);
+my @imap_messages = $imap->messages();
+my $number_of_imap_msg = scalar(@imap_messages);
+
+$quiet || print "Found [$number_of_imap_msg] imap messages\n";
+
+
+#my $imap_mid_fetch  = $imap->fetch_hash('BODY[HEADER.FIELDS ("Message-ID")]');
+my $imap_mid_fetch2 = $imap->parse_headers([@imap_messages], "Message-ID");
+
+my %number_of_mid = ();
+
+
+$quiet || print "Looking IMAP messages\n";
+IMAP_MESSAGE:
+foreach my $m (keys(%$imap_mid_fetch2)) {	
+	#my $mid = $imap_mid_fetch->{$m}->{'BODY[HEADER.FIELDS ("Message-ID")]'};
+	my $mid2 = $imap_mid_fetch2->{$m}->{'Message-ID'}->[0];
+	#print "!!1 $mid\n!!2$mid2\n";
+	
+	#if ($mid =~ m/^Message-Id:\s+(.*)/i) {
+	if ($mid2) {
+		#$mid = $1;
+		if (defined($number_of_mid{$mid2})) {
+			$quiet || warn  "Message $m has same Message-ID as $number_of_mid{$mid2}\n";
+			next IMAP_MESSAGE;
+		}
+		$number_of_mid{$mid2} = $m;
+		$quiet || print "$number_of_mid{$mid2} $mid2\n";
+	}else{
+		$quiet || warn "Message $m has no Message-ID\n";
+	}
+}
+
+$quiet || print "Transfer messages if needed\n";
+foreach my $popid (keys(%popmess)) {
+	$quiet || print "$popid\n";
+	if (! defined($number_of_mid{$popid})) {
+		$quiet || print 
+			"No Message-ID Need Transfer\n",
+			"Pop num : ", $popmess{$popid}, "\n";
+			copypopimap($pop, $imap, $popid);
+			
+	}else{
+		$quiet || print "Found $number_of_mid{$popid} $popid\n";
+		if ($delete) {
+			unless($dry) { 
+				$pop->Delete($popmess{$popid});
+				$quiet || print "Deletion completed\n";
+			}else{
+				$quiet || print "Deletion not completed (dry mode)\n";
+			}
+		}
+	}
+}
+
+$pop->Close();
+$imap->close;
+
+
+sub getpopheaders {
+	$quiet || print "Looking POP messages\n";
+	my ($pop) = @_ ;
+	my $count = $pop->Count();
+	$quiet || print "Found [$count] pop messages\n";
+	for (my $i = 1; $i <= $count; $i++) {
+		my $pending_msgid;
+		foreach my $header ( $pop->Head( $i ) ) {
+			# Long headers may be split over multiple lines.
+		    	# we only care about reconstructing the Message-Id
+			if ($pending_msgid) {
+				if ($header =~ m/^\s+(.+)/) {
+					$header = "$pending_msgid $header";
+				}
+				$pending_msgid = undef;
+			}
+			if($header =~ m/^Message-Id:$/i) {
+				$pending_msgid = $header;
+			} elsif ($header =~ m/^Message-Id:\s+(.*)/i) {
+				my $id = $1;
+				$quiet || print "$i $id", "\n";
+				if (exists($popmess{$id})) {
+					warn "ID $id already exists\n";
+				}else{
+					$popmess{$id} = $i;
+				}
+			}
+		}
+		#print "\n";
+	}
+	$count;
+}
+
+sub extract_date {
+
+	#require Email::Simple;
+	my ($string) = @_;
+	
+	my $email = Email::Simple->new($string);
+	my $date = $email->header('Date');
+	$date = UnixDate(ParseDate($date), "%d-%b-%Y %H:%M:%S %z");
+	$date = "\"$date\"";
+	$debug and print "$date\n";
+	return($date);
+}
+
+
+
+sub copypopimap {
+	my ($pop, $imap, $popid) = @_;
+	my $mess = $pop->HeadAndBody($popmess{$popid});
+	#print $mess;
+	
+	my $date_pop = "";
+	$date_pop = extract_date($mess) if ($idatefromheader);
+	
+	unless($dry) { 
+		unless ($imap->append_string($folder2, "$mess", "", $date_pop)) {
+			print "Transfer failed\n";
+		}else{
+			$quiet || print "Transfer completed\n";
+			if ($delete) {
+				$pop->Delete($popmess{$popid});
+				$quiet || print "Deletion completed\n";
+			}
+		}
+	}else{
+		print "Transfer not done (dry-run mode)\n";
+	}
+}
+
+
+sub  firstline {
+        # extract the first line of a file (without \n)
+
+        my($file) = @_;
+        my $line  = "";
+        
+        open FILE, $file or die("$! $file");
+        chomp($line = <FILE>);
+        close FILE;
+        $line = ($line) ? $line : "!EMPTY! $file";
+        return $line;   
+}
+
+sub get_options
+{
+        my $numopt = scalar(@ARGV);
+        my $opt_ret = GetOptions(
+                                   "debug"       => \$debug,
+                                   "debugimap"   => \$debugimap,
+                                   "debugpop"    => \$debugpop,
+                                   "host1=s"     => \$host1,
+                                   "host2=s"     => \$host2,
+                                   "port1=i"     => \$port1,
+                                   "port2=i"     => \$port2,
+                                   "user1=s"     => \$user1,
+                                   "user2=s"     => \$user2,
+                                   "from=s"      => \$from,
+                                   "to=s"        => \$to,
+                                   "password1=s" => \$password1,
+                                   "password2=s" => \$password2,
+                                   "passfile1=s" => \$passfile1,
+                                   "passfile2=s" => \$passfile2,
+				   "ssl1!"	 => \$ssl1,
+				   "ssl2!"	 => \$ssl2,
+				   "starttls2!"	 => \$starttls2,
+                                   "folder=s"    => \$folder,
+                                   "delete!"     => \$delete,
+                                   "dry!"        => \$dry,
+                                   "quiet!"      => \$quiet,
+                                   "version"     => \$version,
+                                   "help"        => \$help,
+				   "idatefromheader!" => \$idatefromheader,
+                                  );
+          
+        $debug and print "get options: [$opt_ret]\n";
+        print "$VERSION\n" and exit if ($version) ;
+        usage() and exit if ($help or ! $numopt) ;
+        exit unless ($opt_ret) ;
+        
+        
+}
+
+
+sub usage {
+        print <<EOF;
+
+usage: $0 [options]
+
+Several options are mandatory. See the example below.
+
+--from        <string> : parsed as <user1>@<host1>[:<port1>]
+--host1       <string> : "from" POP server. Mandatory.
+--port1       <int>    : port to connect. Default is 110 (ssl:995).
+--user1       <string> : user to login.   Mandatory.
+--password1   <string> : password for the user1. Dangerous, use --passfile1
+--passfile1   <string> : password file for the user1. Contains the password.
+--ssl1                 : enable ssl on POP connect
+--to          <string> : parsed as <user2>@<host2>[:<port2>][/<folder>]
+--host2       <string> : "destination" IMAP server. Mandatory.
+--port2       <int>    : port to connect. Default is 143 (ssl:993).
+--user2       <string> : user to login.   Mandatory.
+--password2   <string> : password for the user2. Dangerous, use --passfile2
+--passfile2   <string> : password file for the user2. Contains the password.
+--ssl2                 : enable ssl on IMAP connect
+--starttls2            : use starttls on IMAP connect instead of SSL
+--folder      <string> : sync to this IMAP folder.
+--delete               : delete messages in "from" POP server after
+                         a successful transfer. useful in case you
+                         want to migrate from one server to another one.
+                         They are really deleted when a QUIT command
+                         is send.
+--idatefromheader      : sets the internal dates on host2 same as the 
+                         "Date:" headers from host1. Turned on by default.
+--dry                  : do nothing, just print what would be done.
+--debug                : debug mode.
+--debugimap            : IMAP debug mode.
+--debugpop             : POP debug mode.
+--quiet                : Only print error messages
+--version              : print sotfware version.
+--help                 : print this message.
+
+Example: to synchronise pop  account "foo" on "pop3.truc.org"
+                     to imap account "bar" on "imap.trac.org"
+
+$0 \\
+   --host1 pop3.troc.org --user1 foo --passfile1 /etc/secret1 \\
+   --host2 imap.trac.org --user2 bar --passfile2 /etc/secret2
+
+
+Branched by Phil Carmody <phil.carmody\@partner.samsung.com> from:
+$rcs
+      pop2imap copyleft is the GNU General Public License.
+EOF
+}
